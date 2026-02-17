@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                         String                  @id @default(auto()) @map("_id") @db.ObjectId
+  fullName                   String
+  email                      String                  @unique
+  password                   String?
+  role                       UserRoleEnum            @default(MEMBER)
+  status                     UserStatus              @default(PENDING)
+  isVerified                 Boolean                 @default(false)
+  isProfileComplete          Boolean                 @default(false)
+  address                    String?
+  latitude                   Float?
+  longitude                  Float?
+  isLoggedIn                 Boolean                 @default(false)
+  bio                        String?
+  gymId                      String?
+  gymName                    String?
+  fitnessGoals               String[]
+  image                      String?
+  phoneNumber                String?
+  dateOfBirth                String?
+  gender                     String?
+  plateForm                  PlatFormType?
+  fcmToken                   String?
+  fcmTokenEx                 String?
+  isDeleted                  Boolean                 @default(false)
+  isVerifiedForPasswordReset Boolean                 @default(false)
+  stripeCustomerId           String?
+  stripeAccountUrl           String?
+  stripeAccountId            String?
+  stripeSubscriptionId       String?
+  onBoarding                 Boolean                 @default(false)
+  subscriptionPlan           SubscriptionPlanStatus?
+  isSubscribed               Boolean                 @default(false)
+  subscriptionEnd            DateTime?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+
+  // Relationships
+  admin                      Admin?
+
+
+
+  @@map("users")
+}
+
+model Admin {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String       @unique @db.ObjectId
+  role         UserRoleEnum @default(SUPER_ADMIN)
+  isSuperAdmin Boolean      @default(false)
+  systemOwner  Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("admins")
+}
+
+
+
+enum UserRoleEnum {
+  ADMIN
+  SUPER_ADMIN
+  SHOP_OWNER
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  PURCHASED
+  COMPLETED
+  CANCELLED
+  RETURNED
+}
+
+enum MessageType {
+  GENERAL_INQUIRY
+  TECHNICAL_SUPPORT
+  PARTNERSHIP
+  FEEDBACK
+  OTHER
+}
+
+enum RoomType {
+  ONE_TO_ONE
+  GROUP
+}
+
+enum PricingRuleType {
+  FIRST_COME
+  SPECIFIC_TRAINER
+  TIME_BASED
+  REFERRAL
+}
+
+enum ResponseStatus {
+  SUBMITTED // Response submitted
+  AUTO_GRADED // MCQ/TrueFalse graded
+  MANUAL_GRADED // Short answer graded by instructor
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CASH
+  EXPIRED
+  REFUNDED
+  REQUIRES_CAPTURE
+  CANCELLED
+}
+
+
+
+enum SocialPlatformType {
+  LINKEDIN
+  FACEBOOK
+  X
+}
+
+enum PlatFormType {
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+enum ReplyStatus {
+  PENDING
+  IGNORED
+  RESOLVED
+  CLOSED
+}
+
+enum ReplyType {
+  SUPPORT
+  REPORT
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  BLOCKED
+}
