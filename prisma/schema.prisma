@@ -12,7 +12,7 @@ model User {
   fullName                   String
   email                      String                  @unique
   password                   String?
-  role                       UserRoleEnum            @default(MEMBER)
+  role                       UserRoleEnum            @default(CUSTOMER)
   status                     UserStatus              @default(PENDING)
   isVerified                 Boolean                 @default(false)
   isProfileComplete          Boolean                 @default(false)
@@ -21,9 +21,6 @@ model User {
   longitude                  Float?
   isLoggedIn                 Boolean                 @default(false)
   bio                        String?
-  gymId                      String?
-  gymName                    String?
-  fitnessGoals               String[]
   image                      String?
   phoneNumber                String?
   dateOfBirth                String?
@@ -33,14 +30,6 @@ model User {
   fcmTokenEx                 String?
   isDeleted                  Boolean                 @default(false)
   isVerifiedForPasswordReset Boolean                 @default(false)
-  stripeCustomerId           String?
-  stripeAccountUrl           String?
-  stripeAccountId            String?
-  stripeSubscriptionId       String?
-  onBoarding                 Boolean                 @default(false)
-  subscriptionPlan           SubscriptionPlanStatus?
-  isSubscribed               Boolean                 @default(false)
-  subscriptionEnd            DateTime?
   createdAt                  DateTime                @default(now())
   updatedAt                  DateTime                @updatedAt
 
@@ -68,6 +57,183 @@ model Admin {
 }
 
 
+model CarPlate {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  plate     String
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////
+// CAFÉ / SHOP
+//////////////////////////////
+
+model Cafe {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  description   String?
+  logo          String?
+  ownerId       String   @db.ObjectId
+  serviceFee    Float
+  paymentFee    Float
+  termsAccepted Boolean  @default(false)
+
+  owner         User     @relation(fields: [ownerId], references: [id])
+  branches      Branch[]
+  promotions    Promotion[]
+  loyaltyStamps LoyaltyStamp[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Branch {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  cafeId          String   @db.ObjectId
+  name            String
+  address         String
+  latitude        Float
+  longitude       Float
+  arrivalRadius   Float    // meters
+  supportsCar     Boolean  @default(true)
+  supportsCounter Boolean  @default(true)
+
+  cafe            Cafe     @relation(fields: [cafeId], references: [id])
+  menuCategories  MenuCategory[]
+  orders          Order[]
+
+  createdAt       DateTime @default(now())
+}
+
+//////////////////////////////
+// MENU
+//////////////////////////////
+
+model MenuCategory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  branchId  String   @db.ObjectId
+  name      String
+
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  items     MenuItem[]
+}
+
+model MenuItem {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  categoryId  String   @db.ObjectId
+  name        String
+  description String?
+  price       Float
+  quantity    Int
+  isAvailable Boolean  @default(true)
+  isCoffee    Boolean  @default(false) // for loyalty
+
+  category    MenuCategory @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  discounts   Discount[]
+}
+
+model Discount {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  itemId    String   @db.ObjectId
+  title     String
+  percent   Float
+  startDate DateTime
+  endDate   DateTime
+
+  item      MenuItem @relation(fields: [itemId], references: [id])
+}
+
+//////////////////////////////
+// ORDER
+//////////////////////////////
+
+model Order {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String        @db.ObjectId
+  branchId      String        @db.ObjectId
+  totalAmount   Float
+  pickupMethod  PickupMethod
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  carPlate      String?
+
+  user          User          @relation(fields: [userId], references: [id])
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  items         OrderItem[]
+  refund        RefundRequest?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model OrderItem {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId    String   @db.ObjectId
+  menuItemId String   @db.ObjectId
+  quantity   Int
+  price      Float
+
+  order      Order    @relation(fields: [orderId], references: [id])
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+}
+
+//////////////////////////////
+// LOYALTY
+//////////////////////////////
+
+model LoyaltyStamp {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  cafeId    String   @db.ObjectId
+  stamps    Int      @default(0)
+
+  user      User     @relation(fields: [userId], references: [id])
+  cafe      Cafe     @relation(fields: [cafeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, cafeId])
+}
+
+//////////////////////////////
+// REFUNDS
+//////////////////////////////
+
+model RefundRequest {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  orderId   String       @db.ObjectId
+  userId    String       @db.ObjectId
+  reason    String
+  penalty   Float?
+  status    RefundStatus @default(REQUESTED)
+
+  order     Order        @relation(fields: [orderId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+
+  createdAt DateTime     @default(now())
+}
+
+//////////////////////////////
+// MARKETING
+//////////////////////////////
+
+model Promotion {
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  cafeId    String        @db.ObjectId
+  itemId    String?       @db.ObjectId
+  tier      PromotionTier
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean       @default(true)
+
+  cafe      Cafe          @relation(fields: [cafeId], references: [id])
+}
+
 
 enum UserRoleEnum {
   ADMIN
@@ -76,83 +242,37 @@ enum UserRoleEnum {
   CUSTOMER
 }
 
+enum PickupMethod {
+  CAR
+  COUNTER
+}
+
 enum OrderStatus {
   PENDING
-  PROCESSING
-  PURCHASED
+  PREPARING
+  READY
   COMPLETED
   CANCELLED
-  RETURNED
-}
-
-enum MessageType {
-  GENERAL_INQUIRY
-  TECHNICAL_SUPPORT
-  PARTNERSHIP
-  FEEDBACK
-  OTHER
-}
-
-enum RoomType {
-  ONE_TO_ONE
-  GROUP
-}
-
-enum PricingRuleType {
-  FIRST_COME
-  SPECIFIC_TRAINER
-  TIME_BASED
-  REFERRAL
-}
-
-enum ResponseStatus {
-  SUBMITTED // Response submitted
-  AUTO_GRADED // MCQ/TrueFalse graded
-  MANUAL_GRADED // Short answer graded by instructor
 }
 
 enum PaymentStatus {
   PENDING
-  COMPLETED
+  PAID
   FAILED
-  CASH
-  EXPIRED
   REFUNDED
-  REQUIRES_CAPTURE
-  CANCELLED
 }
 
-
-
-enum SocialPlatformType {
-  LINKEDIN
-  FACEBOOK
-  X
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PROCESSED
 }
 
-enum PlatFormType {
-  GOOGLE
-  FACEBOOK
-  APPLE
-}
-
-enum ReplyStatus {
-  PENDING
-  IGNORED
-  RESOLVED
-  CLOSED
-}
-
-enum ReplyType {
-  SUPPORT
-  REPORT
-}
-
-enum SupportStatus {
-  OPEN
-  IN_PROGRESS
-  RESOLVED
-  CLOSED
+enum PromotionTier {
+  BASIC
+  PREMIUM
+  FEATURED
 }
 
 enum UserStatus {
