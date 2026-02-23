@@ -44,7 +44,7 @@ router.patch(
 );
 
 router.patch(
-  '/update-trainer-profile',
+  '/update-shop-owner-profile',
   multerUploadMultiple.any(),
   parseBody,
   auth(UserRoleEnum.SHOP_OWNER),
