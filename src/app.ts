@@ -65,11 +65,6 @@ app.use(
 // )
 // );
 
-app.use(
-  '/api/v1/stripe/payment-webhook',
-  express.raw({ type: 'application/json' }),
-  paymentController.handleWebHook,
-);
 
 //parser
 app.use(cookieParser());

@@ -7,12 +7,9 @@ import AppError from '../../errors/AppError';
 import emailSender from '../../utils/emailSender';
 import { generateToken, refreshToken } from '../../utils/generateToken';
 import prisma from '../../utils/prisma';
-import Stripe from 'stripe';
 import generateOtpToken from '../../utils/generateOtpToken';
 import verifyOtp from '../../utils/verifyOtp';
 
-// Initialize Stripe with your secret API key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 interface UserWithOptionalPassword extends Omit<User, 'password'> {
   password?: string;
@@ -640,39 +637,20 @@ const verifyOtpInDB = async (bodyData: {
     data: {
       status: UserStatus.ACTIVE,
       isVerified: true,
-      isProfileComplete: userData.role === UserRoleEnum.MEMBER ? true : false,
+      isProfileComplete: userData.role === UserRoleEnum.CUSTOMER ? true : false,
     },
     select: {
       id: true,
       email: true,
       fullName: true,
-      stripeCustomerId: true,
       role: true,
       image: true,
     },
   });
 
   // Ensure Stripe customer exists
-  if (!updatedUser.stripeCustomerId) {
-    const customer = await stripe.customers.create({
-      name: updatedUser.fullName,
-      email: updatedUser.email,
-      address: {
-        city: 'Default City',
-        country: 'America', // fallback for now
-      },
-      metadata: {
-        userId: updatedUser.id,
-        role: updatedUser.role,
-      },
-    });
-
-    await prisma.user.update({
-      where: { id: updatedUser.id },
-      data: { stripeCustomerId: customer.id },
-    });
-
-    updatedUser.stripeCustomerId = customer.id;
+  if (!updatedUser) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found after update!');
   }
   // 7. Issue tokens
   const accessToken = await generateToken(
@@ -784,7 +762,7 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
         fcmToken: payload.fcmToken ?? null,
         phoneNumber: payload.phoneNumber ?? null,
         address: payload.address ?? null,
-        isProfileComplete: payload.role === UserRoleEnum.MEMBER ? true : false,
+        isProfileComplete: payload.role === UserRoleEnum.CUSTOMER ? true : false,
         isVerified: true,
       },
     });
@@ -828,7 +806,7 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
     id: userRecord.id,
     name: userRecord.fullName,
     email: userRecord.email,
-    roles: [UserRoleEnum.MEMBER],
+    roles: [UserRoleEnum.CUSTOMER],
     image: userRecord.image,
     accessToken,
     refreshToken: refreshTokenValue,

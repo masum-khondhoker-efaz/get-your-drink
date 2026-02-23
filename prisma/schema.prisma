@@ -8,35 +8,42 @@ datasource db {
 }
 
 model User {
-  id                         String                  @id @default(auto()) @map("_id") @db.ObjectId
+  id                         String       @id @default(auto()) @map("_id") @db.ObjectId
   fullName                   String
-  email                      String                  @unique
+  email                      String       @unique
   password                   String?
-  role                       UserRoleEnum            @default(CUSTOMER)
-  status                     UserStatus              @default(PENDING)
-  isVerified                 Boolean                 @default(false)
-  isProfileComplete          Boolean                 @default(false)
+  phoneNumber                String?
+  role                       UserRoleEnum @default(CUSTOMER)
+  status                     UserStatus   @default(PENDING)
+  isVerified                 Boolean      @default(false)
+  isProfileComplete          Boolean      @default(false)
   address                    String?
   latitude                   Float?
   longitude                  Float?
-  isLoggedIn                 Boolean                 @default(false)
+  isLoggedIn                 Boolean      @default(false)
   bio                        String?
   image                      String?
-  phoneNumber                String?
   dateOfBirth                String?
   gender                     String?
-  plateForm                  PlatFormType?
   fcmToken                   String?
   fcmTokenEx                 String?
-  isDeleted                  Boolean                 @default(false)
-  isVerifiedForPasswordReset Boolean                 @default(false)
-  createdAt                  DateTime                @default(now())
-  updatedAt                  DateTime                @updatedAt
+  isDeleted                  Boolean      @default(false)
+  isVerifiedForPasswordReset Boolean      @default(false)
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
 
   // Relationships
-  admin                      Admin?
-
-
+  admin          Admin?
+  carPlates      CarPlate[]
+  cafes          Cafe[]
+  orders         Order[]
+  loyaltyStamps  LoyaltyStamp[]
+  refundRequests RefundRequest[]
+  branches       Branch[]
+  menuCategories MenuCategory[]
+  menuItems      MenuItem[]
+  menuItemAddons MenuItemAddon[]
+  discounts      Discount[]
 
   @@map("users")
 }
@@ -56,15 +63,18 @@ model Admin {
   @@map("admins")
 }
 
-
 model CarPlate {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @db.ObjectId
   plate     String
-
-  user      User     @relation(fields: [userId], references: [id])
-
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, plate])
+  @@map("car_plates")
 }
 
 //////////////////////////////
@@ -73,39 +83,51 @@ model CarPlate {
 
 model Cafe {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  name          String
+  ownerId       String   @db.ObjectId
+  shopName      String
+  licenseNumber String
+  contactEmail  String
+  contactPhone  String
   description   String?
   logo          String?
-  ownerId       String   @db.ObjectId
-  serviceFee    Float
-  paymentFee    Float
+  licenseImage  String?
+  serviceFee    Float    @default(0.0)
+  paymentFee    Float    @default(0.0)
   termsAccepted Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  owner         User     @relation(fields: [ownerId], references: [id])
+  // Relationships
+  owner         User           @relation(fields: [ownerId], references: [id])
   branches      Branch[]
   promotions    Promotion[]
   loyaltyStamps LoyaltyStamp[]
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  @@map("cafes")
 }
 
 model Branch {
   id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId         String   @db.ObjectId
   cafeId          String   @db.ObjectId
-  name            String
+  branchName      String
+  branchPhone     String
   address         String
   latitude        Float
   longitude       Float
-  arrivalRadius   Float    // meters
+  arrivalRadius   Float // meters
   supportsCar     Boolean  @default(true)
   supportsCounter Boolean  @default(true)
-
-  cafe            Cafe     @relation(fields: [cafeId], references: [id])
-  menuCategories  MenuCategory[]
-  orders          Order[]
-
   createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relationships
+  cafe           Cafe           @relation(fields: [cafeId], references: [id])
+  owner          User           @relation(fields: [ownerId], references: [id])
+  menuCategories MenuCategory[]
+  orders         Order[]
+
+  @@map("branches")
 }
 
 //////////////////////////////
@@ -113,38 +135,84 @@ model Branch {
 //////////////////////////////
 
 model MenuCategory {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  branchId  String   @db.ObjectId
-  name      String
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId       String   @db.ObjectId
+  branchId      String   @db.ObjectId
+  categoryName  String
+  categoryImage String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  branch    Branch   @relation(fields: [branchId], references: [id])
-  items     MenuItem[]
+  // Relationships
+  branch Branch     @relation(fields: [branchId], references: [id])
+  owner  User       @relation(fields: [ownerId], references: [id])
+  items  MenuItem[]
+
+  @@unique([branchId, categoryName])
+  @@map("menu_categories")
 }
 
 model MenuItem {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId     String   @db.ObjectId
   categoryId  String   @db.ObjectId
-  name        String
+  itemName    String
+  itemImage   String?
   description String?
   price       Float
   quantity    Int
   isAvailable Boolean  @default(true)
   isCoffee    Boolean  @default(false) // for loyalty
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  category    MenuCategory @relation(fields: [categoryId], references: [id])
-  orderItems  OrderItem[]
-  discounts   Discount[]
+  // Relationships
+  category       MenuCategory    @relation(fields: [categoryId], references: [id])
+  owner          User            @relation(fields: [ownerId], references: [id])
+  orderItems     OrderItem[]
+  discounts      Discount[]
+  menuItemAddons MenuItemAddon[]
+
+  @@unique([categoryId, itemName])
+  @@map("menu_items")
+}
+
+model MenuItemAddon {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId    String   @db.ObjectId
+  menuItemId String   @db.ObjectId
+  addonName  String
+  price      Float
+  required   Boolean  @default(false)
+  optional   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+  owner    User     @relation(fields: [ownerId], references: [id])
+
+  @@unique([menuItemId, addonName])
+  @@map("menu_item_addons")
 }
 
 model Discount {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId   String   @db.ObjectId
   itemId    String   @db.ObjectId
+  event     String
   title     String
   percent   Float
   startDate DateTime
   endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  item      MenuItem @relation(fields: [itemId], references: [id])
+  // Relationships
+  item  MenuItem @relation(fields: [itemId], references: [id])
+  owner User     @relation(fields: [ownerId], references: [id])
+
+  @@map("discounts")
 }
 
 //////////////////////////////
@@ -160,25 +228,27 @@ model Order {
   status        OrderStatus   @default(PENDING)
   paymentStatus PaymentStatus @default(PENDING)
   carPlate      String?
-
-  user          User          @relation(fields: [userId], references: [id])
-  branch        Branch        @relation(fields: [branchId], references: [id])
-  items         OrderItem[]
-  refund        RefundRequest?
-
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  // Relationships
+  user   User           @relation(fields: [userId], references: [id])
+  branch Branch         @relation(fields: [branchId], references: [id])
+  items  OrderItem[]
+  refund RefundRequest?
+
+  @@map("orders")
 }
 
 model OrderItem {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  orderId    String   @db.ObjectId
-  menuItemId String   @db.ObjectId
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  orderId    String @db.ObjectId
+  menuItemId String @db.ObjectId
   quantity   Int
   price      Float
 
-  order      Order    @relation(fields: [orderId], references: [id])
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  order    Order    @relation(fields: [orderId], references: [id])
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
 }
 
 //////////////////////////////
@@ -186,18 +256,19 @@ model OrderItem {
 //////////////////////////////
 
 model LoyaltyStamp {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @db.ObjectId
-  cafeId    String   @db.ObjectId
-  stamps    Int      @default(0)
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String @db.ObjectId
+  cafeId String @db.ObjectId
+  stamps Int    @default(0)
 
-  user      User     @relation(fields: [userId], references: [id])
-  cafe      Cafe     @relation(fields: [cafeId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  cafe Cafe @relation(fields: [cafeId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId, cafeId])
+  @@map("loyalty_stamps")
 }
 
 //////////////////////////////
@@ -211,11 +282,14 @@ model RefundRequest {
   reason    String
   penalty   Float?
   status    RefundStatus @default(REQUESTED)
-
-  order     Order        @relation(fields: [orderId], references: [id])
-  user      User         @relation(fields: [userId], references: [id])
-
   createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // Relationships
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@map("refund_requests")
 }
 
 //////////////////////////////
@@ -230,10 +304,14 @@ model Promotion {
   startDate DateTime
   endDate   DateTime
   isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-  cafe      Cafe          @relation(fields: [cafeId], references: [id])
+  // Relationships
+  cafe Cafe @relation(fields: [cafeId], references: [id])
+
+  @@map("promotions")
 }
-
 
 enum UserRoleEnum {
   ADMIN

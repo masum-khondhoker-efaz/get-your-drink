@@ -38,12 +38,6 @@ export default {
     aws_region: process.env.AWS_REGION,
     aws_s3_bucket: process.env.AWS_S3_BUCKET,
   },
-
-  stripe: {
-    stripe_secret_key: process.env.STRIPE_SECRET_KEY,
-    stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY,
-    stripe_webhook_secret: process.env.STRIPE_WEBHOOK_SECRET,
-  },
   backend_base_url: process.env.BACKEND_BASE_URL,
   frontend_base_url: process.env.FRONTEND_BASE_URL,
 };

@@ -18,7 +18,7 @@ router.post(
   '/trainer-register',
   multerUploadMultiple.single('certificationDocument'),
   parseBody,
-  auth(UserRoleEnum.TRAINER),
+  auth(UserRoleEnum.SHOP_OWNER),
   validateRequest(UserValidations.trainerRegisterUser),
   UserControllers.trainerRegisterUser,
 );
@@ -32,7 +32,7 @@ router.put(
 router.get('/me', auth(), UserControllers.getMyProfile);
 router.get(
   '/trainer-profile',
-  auth(UserRoleEnum.TRAINER),
+  auth(UserRoleEnum.SHOP_OWNER),
   UserControllers.getMyTrainerProfile,
 );
 
@@ -47,7 +47,7 @@ router.patch(
   '/update-trainer-profile',
   multerUploadMultiple.any(),
   parseBody,
-  auth(UserRoleEnum.TRAINER),
+  auth(UserRoleEnum.SHOP_OWNER),
   validateRequest(UserValidations.updateTrainerProfileSchema),
   UserControllers.updateTrainerProfile,
 );
@@ -109,7 +109,7 @@ router.put(
 router.post(
   '/chat-image',
   multerUploadMultiple.single('chatImage'),
-  auth(UserRoleEnum.TRAINER, UserRoleEnum.MEMBER),
+  auth(UserRoleEnum.SHOP_OWNER, UserRoleEnum.CUSTOMER),
   UserControllers.chatImageUpload,
 );
 

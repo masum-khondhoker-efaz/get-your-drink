@@ -53,7 +53,7 @@ const loginUserFromDB = async (payload: {
   }
 
   // 4️⃣ Trainer validation
-  if (user.role === UserRoleEnum.TRAINER) {
+  if (user.role === UserRoleEnum.SHOP_OWNER) {
     if (!user.isProfileComplete || !user.trainers) {
       throw new AppError(
         httpStatus.FORBIDDEN,

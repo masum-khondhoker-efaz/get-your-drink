@@ -17,7 +17,7 @@ const registerUser = z.object({
     password: z.string({
       required_error: 'Password is required!',
     }),
-    role: z.enum(['MEMBER', 'TRAINER'], {
+    role: z.enum(['CUSTOMER', 'SHOP_OWNER'], {
       required_error: 'Role is required!',
     }),
   }),

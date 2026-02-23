@@ -50,7 +50,7 @@ export function setupSocketIO(server: HTTPServer) {
         }
 
         // Check if user is a trainer and verify subscription
-        if (user.role === UserRoleEnum.TRAINER) {
+        if (user.role === UserRoleEnum.SHOP_OWNER) {
           if (!user.isSubscribed || user.subscriptionEnd < new Date()) {
             socket.emit('error', {
               message: 'Active subscription required to send messages. Please subscribe to continue chatting.',
@@ -76,7 +76,7 @@ export function setupSocketIO(server: HTTPServer) {
         }
 
         // Check if receiver is a trainer and has active subscription
-        if (receiver.role === UserRoleEnum.TRAINER) {
+        if (receiver.role === UserRoleEnum.SHOP_OWNER) {
           if (!receiver.isSubscribed || !receiver.subscriptionEnd || receiver.subscriptionEnd < new Date()) {
             socket.emit('error', {
               message: 'This trainer does not have an active subscription and cannot receive messages.',
@@ -146,7 +146,7 @@ export function setupSocketIO(server: HTTPServer) {
         }
 
         // Check sender subscription if trainer
-        if (user.role === UserRoleEnum.TRAINER) {
+        if (user.role === UserRoleEnum.SHOP_OWNER) {
           if (!user.isSubscribed || user.subscriptionEnd < new Date()) {
             socket.emit('error', {
               message: 'Active subscription required to view messages.',
@@ -173,7 +173,7 @@ export function setupSocketIO(server: HTTPServer) {
         }
 
         // Check receiver subscription if trainer
-        if (receiver.role === UserRoleEnum.TRAINER) {
+        if (receiver.role === UserRoleEnum.SHOP_OWNER) {
           if (!receiver.isSubscribed || !receiver.subscriptionEnd || receiver.subscriptionEnd < new Date()) {
             socket.emit('error', {
               message: 'This trainer does not have an active subscription.',
@@ -320,7 +320,7 @@ export function setupSocketIO(server: HTTPServer) {
         }
 
         // Check if user is a trainer and verify subscription
-        if (user.role === UserRoleEnum.TRAINER) {
+        if (user.role === UserRoleEnum.SHOP_OWNER) {
           if (!user.isSubscribed || user.subscriptionEnd < new Date()) {
             socket.emit('error', {
               message: 'Active subscription required to send messages. Please subscribe to continue chatting.',
