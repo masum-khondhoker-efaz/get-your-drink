@@ -33,17 +33,21 @@ model User {
   updatedAt                  DateTime     @updatedAt
 
   // Relationships
-  admin          Admin?
-  carPlates      CarPlate[]
-  cafes          Cafe[]
-  orders         Order[]
-  loyaltyStamps  LoyaltyStamp[]
-  refundRequests RefundRequest[]
-  branches       Branch[]
-  menuCategories MenuCategory[]
-  menuItems      MenuItem[]
-  menuItemAddons MenuItemAddon[]
-  discounts      Discount[]
+  admin              Admin?
+  carPlates          CarPlate[]
+  cafes              Cafe[]
+  orders             Order[]
+  loyaltyStamps      LoyaltyStamp[]
+  refundRequests     RefundRequest[]
+  branches           Branch[]
+  menuCategories     MenuCategory[]
+  menuItems          MenuItem[]
+  // menuItemAddons  MenuItemAddon[]
+  menuItemOptions    MenuItemOption[] // New relationship
+  discounts          Discount[]
+  carts              Cart[] // Shopping cart
+  wallet             CustomerWallet? // Customer's cashback balance
+  rewardTransactions RewardTransaction[] // Transaction history
 
   @@map("users")
 }
@@ -64,11 +68,13 @@ model Admin {
 }
 
 model CarPlate {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @db.ObjectId
-  plate     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @db.ObjectId
+  vehicleMake  String?
+  vehicleModel String?
+  plate        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relationships
   user User @relation(fields: [userId], references: [id])
@@ -102,6 +108,7 @@ model Cafe {
   branches      Branch[]
   promotions    Promotion[]
   loyaltyStamps LoyaltyStamp[]
+  adminRewards  AdminReward[] // Admin-sponsored rewards for this cafe
 
   @@map("cafes")
 }
@@ -122,12 +129,31 @@ model Branch {
   updatedAt       DateTime @updatedAt
 
   // Relationships
-  cafe           Cafe           @relation(fields: [cafeId], references: [id])
-  owner          User           @relation(fields: [ownerId], references: [id])
+  cafe           Cafe             @relation(fields: [cafeId], references: [id])
+  owner          User             @relation(fields: [ownerId], references: [id])
   menuCategories MenuCategory[]
   orders         Order[]
+  schedules      BranchSchedule[] // Opening hours
+  carts          Cart[] // Active carts for this branch
 
   @@map("branches")
+}
+
+model BranchSchedule {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  branchId  String    @db.ObjectId
+  dayOfWeek DayOfWeek
+  openTime  String // Format: "HH:mm" e.g., "09:00"
+  closeTime String // Format: "HH:mm" e.g., "23:00"
+  isClosed  Boolean   @default(false) // If true, branch is closed on this day
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relationships
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, dayOfWeek])
+  @@map("branch_schedules")
 }
 
 //////////////////////////////
@@ -159,7 +185,7 @@ model MenuItem {
   itemName    String
   itemImage   String?
   description String?
-  price       Float
+  price       Float // Base price
   quantity    Int
   isAvailable Boolean  @default(true)
   isCoffee    Boolean  @default(false) // for loyalty
@@ -167,33 +193,78 @@ model MenuItem {
   updatedAt   DateTime @updatedAt
 
   // Relationships
-  category       MenuCategory    @relation(fields: [categoryId], references: [id])
-  owner          User            @relation(fields: [ownerId], references: [id])
-  orderItems     OrderItem[]
-  discounts      Discount[]
-  menuItemAddons MenuItemAddon[]
+  category   MenuCategory     @relation(fields: [categoryId], references: [id])
+  owner      User             @relation(fields: [ownerId], references: [id])
+  orderItems OrderItem[]
+  cartItems  CartItem[] // Items in shopping carts
+  discounts  Discount[]
+  // menuItemAddons MenuItemAddon[]
+  options    MenuItemOption[] // New: customization options
 
   @@unique([categoryId, itemName])
   @@map("menu_items")
 }
 
-model MenuItemAddon {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  ownerId    String   @db.ObjectId
-  menuItemId String   @db.ObjectId
-  addonName  String
-  price      Float
-  required   Boolean  @default(false)
-  optional   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+// Rename the old addon model for backward compatibility if needed
+// Or you can delete this and use the new system below
+// model MenuItemAddon {
+//   id         String   @id @default(auto()) @map("_id") @db.ObjectId
+//   ownerId    String   @db.ObjectId
+//   menuItemId String   @db.ObjectId
+//   addonName  String
+//   price      Float
+//   required   Boolean  @default(false)
+//   optional   Boolean  @default(true)
+//   createdAt  DateTime @default(now())
+//   updatedAt  DateTime @updatedAt
+
+//   // Relationships
+//   menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+//   owner    User     @relation(fields: [ownerId], references: [id])
+
+//   @@unique([menuItemId, addonName])
+//   @@map("menu_item_addons")
+// }
+
+// New flexible customization system for coffee shop options
+model MenuItemOption {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId      String     @db.ObjectId
+  menuItemId   String     @db.ObjectId
+  optionName   String // e.g., "Milk Type", "Sugar Level", "Size", "Flavor Shot"
+  optionType   OptionType @default(SINGLE_CHOICE)
+  required     Boolean    @default(false) // Must customer select this option?
+  displayOrder Int        @default(0) // For UI ordering
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   // Relationships
-  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
-  owner    User     @relation(fields: [ownerId], references: [id])
+  menuItem MenuItem              @relation(fields: [menuItemId], references: [id])
+  owner    User                  @relation(fields: [ownerId], references: [id])
+  values   MenuItemOptionValue[]
 
-  @@unique([menuItemId, addonName])
-  @@map("menu_item_addons")
+  @@unique([menuItemId, optionName])
+  @@map("menu_item_options")
+}
+
+model MenuItemOptionValue {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  optionId      String   @db.ObjectId
+  valueName     String // e.g., "Oat Milk", "Almond Milk", "No Sugar", "Low Sugar"
+  priceModifier Float    @default(0.0) // Additional cost (can be negative for discounts)
+  isDefault     Boolean  @default(false) // Pre-selected option
+  displayOrder  Int      @default(0)
+  isAvailable   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  option                  MenuItemOption           @relation(fields: [optionId], references: [id])
+  orderItemCustomizations OrderItemCustomization[]
+  cartItemCustomizations  CartItemCustomization[] // Also used in cart
+
+  @@unique([optionId, valueName])
+  @@map("menu_item_option_values")
 }
 
 model Discount {
@@ -216,43 +287,200 @@ model Discount {
 }
 
 //////////////////////////////
+// CART
+//////////////////////////////
+
+model Cart {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  branchId  String   @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user   User       @relation(fields: [userId], references: [id])
+  branch Branch     @relation(fields: [branchId], references: [id])
+  items  CartItem[]
+
+  @@unique([userId, branchId]) // One cart per user per branch
+  @@map("carts")
+}
+
+model CartItem {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  cartId     String   @db.ObjectId
+  menuItemId String   @db.ObjectId
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  cart           Cart                    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  menuItem       MenuItem                @relation(fields: [menuItemId], references: [id])
+  customizations CartItemCustomization[] // Customer's selected options
+
+  @@map("cart_items")
+}
+
+// Store customer selections for each cart item
+model CartItemCustomization {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  cartItemId    String   @db.ObjectId
+  optionValueId String   @db.ObjectId
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  cartItem    CartItem            @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  optionValue MenuItemOptionValue @relation(fields: [optionValueId], references: [id])
+
+  @@map("cart_item_customizations")
+}
+
+//////////////////////////////
 // ORDER
 //////////////////////////////
 
 model Order {
-  id            String        @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String        @db.ObjectId
-  branchId      String        @db.ObjectId
-  totalAmount   Float
-  pickupMethod  PickupMethod
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
-  carPlate      String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id               String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String        @db.ObjectId
+  branchId         String        @db.ObjectId
+  subtotal         Float // Original price before any discounts
+  pointsEarned     Int           @default(0) // Points earned from this order
+  walletPointsUsed Int           @default(0) // Points deducted from wallet
+  walletCashUsed   Float         @default(0.0) // Cash used from wallet
+  totalAmount      Float // Final amount customer paid
+  pickupMethod     PickupMethod
+  status           OrderStatus   @default(PENDING)
+  paymentStatus    PaymentStatus @default(PENDING)
+  rewardStatus     RewardStatus  @default(PENDING) // Track points crediting status
+  carPlate         String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   // Relationships
-  user   User           @relation(fields: [userId], references: [id])
-  branch Branch         @relation(fields: [branchId], references: [id])
-  items  OrderItem[]
-  refund RefundRequest?
+  user              User               @relation(fields: [userId], references: [id])
+  branch            Branch             @relation(fields: [branchId], references: [id])
+  items             OrderItem[]
+  refund            RefundRequest?
+  rewardTransaction RewardTransaction? // Link to points transaction
 
   @@map("orders")
 }
 
 model OrderItem {
-  id         String @id @default(auto()) @map("_id") @db.ObjectId
-  orderId    String @db.ObjectId
-  menuItemId String @db.ObjectId
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId    String   @db.ObjectId
+  menuItemId String   @db.ObjectId
   quantity   Int
-  price      Float
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  price      Float // Final price including customizations
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  order    Order    @relation(fields: [orderId], references: [id])
-  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+  // Relationships
+  order          Order                    @relation(fields: [orderId], references: [id])
+  menuItem       MenuItem                 @relation(fields: [menuItemId], references: [id])
+  customizations OrderItemCustomization[] // Customer's selected options
 
   @@map("order_items")
+}
+
+// Store customer selections for each order item
+model OrderItemCustomization {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderItemId   String   @db.ObjectId
+  optionValueId String   @db.ObjectId
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  orderItem   OrderItem           @relation(fields: [orderItemId], references: [id])
+  optionValue MenuItemOptionValue @relation(fields: [optionValueId], references: [id])
+
+  @@map("order_item_customizations")
+}
+
+//////////////////////////////
+// REWARDS & WALLET
+//////////////////////////////
+
+model RewardConfig {
+  id                     String   @id @default(auto()) @map("_id") @db.ObjectId
+  pointsPerAED           Int      @default(10000) // 1 AED spent = 10,000 points (0.01 AED = 100 points)
+  aedPerPoint            Float    @default(0.0001) // 1 point = 0.0001 AED (10,000 points = 1 AED)
+  minPointsToRedeem      Int      @default(10000) // Minimum 10,000 points (1 AED) to convert
+  pointsExpiryDays       Int? // Points expire after X days (null = never expire)
+  allowPartialRedemption Boolean  @default(true) // Can use partial wallet balance
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@map("reward_config")
+}
+
+model AdminReward {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  cafeId      String?    @db.ObjectId // If null, applies to all cafes
+  categoryId  String?    @db.ObjectId // Specific category
+  itemId      String?    @db.ObjectId // Specific item
+  rewardType  RewardType @default(POINTS_MULTIPLIER)
+  rewardValue Float // Multiplier (e.g., 2 = 2x points) or bonus points (e.g., 50000 = 50,000 bonus points)
+  maxPoints   Int? // Maximum points that can be earned per order
+  minPurchase Float      @default(0.0) // Minimum order amount to qualify
+  title       String // e.g., "2x Points on Cappuccino" or "50,000 Bonus Points"
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean    @default(true)
+  dailyLimit  Int? // Max times this reward can be claimed per day globally
+  userLimit   Int? // Max times a user can claim this reward (lifetime)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relationships
+  cafe Cafe? @relation(fields: [cafeId], references: [id])
+
+  @@map("admin_rewards")
+}
+
+model CustomerWallet {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String   @unique @db.ObjectId
+  points            Int      @default(0) // Current points balance (1 AED = 10,000 points)
+  totalPointsEarned Int      @default(0) // Lifetime points earned
+  totalPointsSpent  Int      @default(0) // Points used/redeemed
+  cashBalance       Float    @default(0.0) // Converted cash from redeemed points
+  totalCashEarned   Float    @default(0.0) // Lifetime cash from points
+  totalCashSpent    Float    @default(0.0) // Cash used from wallet
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("customer_wallets")
+}
+
+model RewardTransaction {
+  id                  String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String                @db.ObjectId
+  orderId             String?               @unique @db.ObjectId // Link to order if applicable
+  transactionType     RewardTransactionType
+  pointsAmount        Int                   @default(0) // Points earned/spent
+  cashAmount          Float                 @default(0.0) // Cash equivalent (for conversions)
+  pointsBalanceBefore Int                   @default(0) // Points balance before transaction
+  pointsBalanceAfter  Int                   @default(0) // Points balance after transaction
+  cashBalanceBefore   Float                 @default(0.0) // Cash balance before transaction
+  cashBalanceAfter    Float                 @default(0.0) // Cash balance after transaction
+  description         String // e.g., "Points earned from order #12345", "Redeemed 10,000 points to AED 1.00"
+  status              TransactionStatus     @default(COMPLETED)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  // Relationships
+  user  User   @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@map("reward_transactions")
 }
 
 //////////////////////////////
@@ -293,6 +521,7 @@ model RefundRequest {
   order Order @relation(fields: [orderId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
 
+  @@unique([orderId])
   @@map("refund_requests")
 }
 
@@ -361,4 +590,53 @@ enum UserStatus {
   ACTIVE
   PENDING
   BLOCKED
+}
+
+enum OptionType {
+  SINGLE_CHOICE // Radio button - choose only one (e.g., milk type)
+  MULTIPLE_CHOICE // Checkbox - choose multiple (e.g., flavor shots)
+  QUANTITY // Number input (e.g., sugar level 0-5, ice level)
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum RewardType {
+  POINTS_MULTIPLIER // e.g., 2x points, 3x points
+  BONUS_POINTS // e.g., flat bonus of 50,000 points
+  PERCENTAGE_BOOST // e.g., 50% extra points on top of base
+}
+
+enum RewardStatus {
+  PENDING // Order not completed yet
+  PROCESSING // Order completed, cashback being processed
+  CREDITED // Cashback credited to wallet
+  FAILED // Failed to credit
+  CANCELLED // Order cancelled, no cashback
+}
+
+enum RewardTransactionType {
+  POINTS_EARNED // Points earned from order (base + bonus)
+  POINTS_USED // Points deducted (not common, usually convert to cash first)
+  POINTS_TO_CASH // Convert points to wallet cash balance
+  CASH_USED // Customer uses wallet cash balance
+  REFUND_POINTS // Points refunded due to order cancellation
+  REFUND_CASH // Cash refunded due to order cancellation
+  ADMIN_ADJUSTMENT // Manual adjustment by admin
+  POINTS_EXPIRED // Points expired (future feature)
+  WITHDRAWAL // Customer withdraws to bank (future feature)
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
 }
