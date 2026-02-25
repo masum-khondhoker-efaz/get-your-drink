@@ -33,21 +33,23 @@ model User {
   updatedAt                  DateTime     @updatedAt
 
   // Relationships
-  admin              Admin?
-  carPlates          CarPlate[]
-  cafes              Cafe[]
-  orders             Order[]
-  loyaltyStamps      LoyaltyStamp[]
-  refundRequests     RefundRequest[]
-  branches           Branch[]
-  menuCategories     MenuCategory[]
-  menuItems          MenuItem[]
+  admin               Admin?
+  carPlates           CarPlate[]
+  cafes               Cafe[]
+  orders              Order[]
+  loyaltyStamps       LoyaltyStamp[]
+  refundRequests      RefundRequest[]
+  branches            Branch[]
+  menuCategories      MenuCategory[]
+  menuItems           MenuItem[]
   // menuItemAddons  MenuItemAddon[]
-  menuItemOptions    MenuItemOption[] // New relationship
-  discounts          Discount[]
-  carts              Cart[] // Shopping cart
-  wallet             CustomerWallet? // Customer's cashback balance
-  rewardTransactions RewardTransaction[] // Transaction history
+  menuItemOptions     MenuItemOption[] // New relationship
+  discounts           Discount[]
+  carts               Cart[] // Shopping cart
+  wallet              CustomerWallet? // Customer's cashback balance
+  rewardTransactions  RewardTransaction[] // Transaction history
+  paymentTransactions PaymentTransaction[] // Payment history
+  savedPaymentMethods SavedPaymentMethod[] // Saved cards/payment methods
 
   @@map("users")
 }
@@ -104,11 +106,12 @@ model Cafe {
   updatedAt     DateTime @updatedAt
 
   // Relationships
-  owner         User           @relation(fields: [ownerId], references: [id])
-  branches      Branch[]
-  promotions    Promotion[]
-  loyaltyStamps LoyaltyStamp[]
-  adminRewards  AdminReward[] // Admin-sponsored rewards for this cafe
+  owner                  User                    @relation(fields: [ownerId], references: [id])
+  branches               Branch[]
+  // promotions      Promotion[] // Deprecated - use marketing subscriptions
+  loyaltyStamps          LoyaltyStamp[]
+  adminRewards           AdminReward[] // Admin-sponsored rewards for this cafe
+  marketingSubscriptions MarketingSubscription[] // Active marketing campaigns
 
   @@map("cafes")
 }
@@ -359,11 +362,12 @@ model Order {
   updatedAt        DateTime      @updatedAt
 
   // Relationships
-  user              User               @relation(fields: [userId], references: [id])
-  branch            Branch             @relation(fields: [branchId], references: [id])
-  items             OrderItem[]
-  refund            RefundRequest?
-  rewardTransaction RewardTransaction? // Link to points transaction
+  user               User                @relation(fields: [userId], references: [id])
+  branch             Branch              @relation(fields: [branchId], references: [id])
+  items              OrderItem[]
+  refund             RefundRequest?
+  rewardTransaction  RewardTransaction? // Link to points transaction
+  paymentTransaction PaymentTransaction? // Link to payment record
 
   @@map("orders")
 }
@@ -398,6 +402,153 @@ model OrderItemCustomization {
   optionValue MenuItemOptionValue @relation(fields: [optionValueId], references: [id])
 
   @@map("order_item_customizations")
+}
+
+//////////////////////////////
+// PAYMENT & FOLOOSI INTEGRATION
+//////////////////////////////
+
+model PaymentTransaction {
+  id                 String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String                @db.ObjectId
+  orderId            String?               @unique @db.ObjectId // Link to order (null for wallet top-ups)
+  marketingPaymentId String?               @unique @db.ObjectId // Link to marketing subscription payment
+  transactionType    TransactionType
+  amount             Float // Amount in AED
+  currency           String                @default("AED")
+  paymentMethod      String? // "card", "wallet", "apple_pay", "google_pay"
+  paymentStatus      FooloosiPaymentStatus @default(PENDING)
+
+  // Foloosi specific fields
+  fooloosiTransactionId  String? @unique // Foloosi's transaction reference
+  fooloosiMerchantRef    String? @unique // Our merchant reference sent to Foloosi
+  fooloosiPaymentUrl     String? // Payment page URL
+  fooloosiCustomerName   String?
+  fooloosiCustomerEmail  String?
+  fooloosiCustomerMobile String?
+  fooloosiCardNumber     String? // Last 4 digits (e.g., "****1234")
+  fooloosiCardBrand      String? // "Visa", "Mastercard", etc.
+
+  // Payment flow tracking
+  initiatedAt DateTime  @default(now())
+  paidAt      DateTime? // When payment completed
+  failedAt    DateTime? // When payment failed
+  refundedAt  DateTime? // When refund completed
+
+  // Additional details
+  failureReason String? // Error message if payment failed
+  ipAddress     String?
+  deviceType    String? // "ios", "android", "web"
+  metadata      Json? // Any additional data
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user             User              @relation(fields: [userId], references: [id])
+  order            Order?            @relation(fields: [orderId], references: [id])
+  marketingPayment MarketingPayment? @relation(fields: [marketingPaymentId], references: [id])
+  refunds          PaymentRefund[]
+  webhooks         FooloosiWebhook[] // Track all webhook events for this transaction
+
+  @@index([fooloosiTransactionId])
+  @@index([fooloosiMerchantRef])
+  @@index([userId, createdAt])
+  @@map("payment_transactions")
+}
+
+model SavedPaymentMethod {
+  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String @db.ObjectId
+  paymentType String // "card", "apple_pay", "google_pay"
+
+  // Card details (tokenized/masked)
+  cardLast4       String? // Last 4 digits
+  cardBrand       String? // "Visa", "Mastercard", "Amex"
+  cardExpiryMonth String? // "12"
+  cardExpiryYear  String? // "2026"
+  cardHolderName  String?
+
+  // Foloosi tokenization
+  fooloosiToken String? @unique // Foloosi's card token for future charges
+
+  isDefault Boolean @default(false) // Primary payment method
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("saved_payment_methods")
+}
+
+model FooloosiWebhook {
+  id                   String  @id @default(auto()) @map("_id") @db.ObjectId
+  paymentTransactionId String? @db.ObjectId // Link to our payment transaction
+
+  // Webhook data from Foloosi
+  fooloosiEventType     String // "payment.success", "payment.failed", "refund.completed"
+  fooloosiTransactionId String? // Foloosi's transaction ID
+  fooloosiMerchantRef   String? // Our merchant reference
+  fooloosiStatus        String // "success", "failed", "pending"
+
+  // Raw webhook payload
+  rawPayload Json // Store complete webhook data
+
+  // Processing status
+  processed       Boolean   @default(false)
+  processedAt     DateTime?
+  processingError String? // If webhook processing failed
+
+  // Security
+  signature String? // Foloosi webhook signature for verification
+  ipAddress String? // IP address of webhook sender
+
+  receivedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
+
+  @@index([fooloosiTransactionId])
+  @@index([fooloosiMerchantRef])
+  @@index([processed])
+  @@map("foloosi_webhooks")
+}
+
+model PaymentRefund {
+  id                   String  @id @default(auto()) @map("_id") @db.ObjectId
+  paymentTransactionId String  @db.ObjectId
+  orderId              String? @db.ObjectId // Link to order if applicable
+  refundRequestId      String? @db.ObjectId // Link to refund request
+
+  refundAmount Float // Amount refunded
+  refundReason String
+  refundStatus RefundPaymentStatus @default(PENDING)
+
+  // Foloosi refund details
+  fooloosiRefundId  String? @unique // Foloosi's refund transaction ID
+  fooloosiRefundRef String? @unique // Our refund reference
+
+  initiatedAt DateTime  @default(now())
+  completedAt DateTime?
+  failedAt    DateTime?
+
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id])
+  refundRequest      RefundRequest?     @relation(fields: [refundRequestId], references: [id])
+
+  @@index([paymentTransactionId])
+  @@map("payment_refunds")
 }
 
 //////////////////////////////
@@ -518,32 +669,108 @@ model RefundRequest {
   updatedAt DateTime     @updatedAt
 
   // Relationships
-  order Order @relation(fields: [orderId], references: [id])
-  user  User  @relation(fields: [userId], references: [id])
+  order         Order          @relation(fields: [orderId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  paymentRefund PaymentRefund? // Link to payment refund
 
   @@unique([orderId])
   @@map("refund_requests")
 }
 
 //////////////////////////////
-// MARKETING
+// MARKETING & PROMOTIONS
 //////////////////////////////
 
-model Promotion {
-  id        String        @id @default(auto()) @map("_id") @db.ObjectId
-  cafeId    String        @db.ObjectId
-  itemId    String?       @db.ObjectId
-  tier      PromotionTier
-  startDate DateTime
-  endDate   DateTime
-  isActive  Boolean       @default(true)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+model MarketingPlan {
+  id                      String   @id @default(auto()) @map("_id") @db.ObjectId
+  planName                String // e.g., "5 Day Premium Boost", "Weekend Special"
+  description             String?
+  durationDays            Int // Number of days (e.g., 5, 7, 14)
+  pushNotificationsPerDay Int      @default(3) // Number of push notifications per day
+  totalPrice              Float // Total cost for the entire duration
+  pricePerDay             Float // Price per day (for daily payment option)
+  priorityLevel           Int      @default(1) // Higher = shown first (1-10)
+  features                String[] // Array of features: ["Top placement", "3 push notifications/day", "Featured badge"]
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   // Relationships
-  cafe Cafe @relation(fields: [cafeId], references: [id])
+  subscriptions MarketingSubscription[]
 
-  @@map("promotions")
+  @@map("marketing_plans")
+}
+
+model MarketingSubscription {
+  id                     String             @id @default(auto()) @map("_id") @db.ObjectId
+  cafeId                 String             @db.ObjectId
+  planId                 String             @db.ObjectId
+  subscriptionStatus     SubscriptionStatus @default(PENDING_PAYMENT)
+  paymentType            PaymentType
+  startDate              DateTime // When promotion starts
+  endDate                DateTime // When promotion ends
+  totalAmount            Float // Total cost
+  paidAmount             Float              @default(0.0) // Amount paid so far
+  remainingAmount        Float // Amount still owed
+  dailyNotificationsSent Int                @default(0) // Track notifications sent today
+  lastNotificationDate   DateTime? // Last date notifications were sent
+  autoRenewal            Boolean            @default(false) // Auto-renew when expires
+  cancelledAt            DateTime? // When subscription was cancelled
+  cancelReason           String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  // Relationships
+  cafe     Cafe               @relation(fields: [cafeId], references: [id])
+  plan     MarketingPlan      @relation(fields: [planId], references: [id])
+  payments MarketingPayment[]
+
+  @@map("marketing_subscriptions")
+}
+
+model MarketingPayment {
+  id                String                 @id @default(auto()) @map("_id") @db.ObjectId
+  subscriptionId    String                 @db.ObjectId
+  amount            Float // Payment amount
+  paymentDate       DateTime               @default(now()) // When payment was made
+  paymentMethod     String? // e.g., "Credit Card", "Bank Transfer"
+  transactionId     String? // External payment gateway transaction ID
+  status            MarketingPaymentStatus @default(PENDING)
+  installmentNumber Int? // 1, 2, 3... for daily payments (null for full payment)
+  scheduledDate     DateTime? // For future scheduled payments
+  paidAt            DateTime? // Actual payment completion time
+  failureReason     String? // If payment failed
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  // Relationships
+  subscription       MarketingSubscription @relation(fields: [subscriptionId], references: [id])
+  paymentTransaction PaymentTransaction? // Link to payment record
+
+  @@map("marketing_payments")
+}
+
+enum SubscriptionStatus {
+  PENDING_PAYMENT // Waiting for first/full payment
+  ACTIVE // Currently running and paid
+  PENDING_INSTALLMENT // Active but waiting for next daily payment
+  PAUSED // Temporarily paused (e.g., payment failed)
+  COMPLETED // Finished successfully
+  CANCELLED // Cancelled by shop owner
+  EXPIRED // Ended naturally
+}
+
+enum PaymentType {
+  FULL_PAYMENT // Pay entire amount upfront
+  DAILY_INSTALLMENT // Pay each day
+}
+
+enum MarketingPaymentStatus {
+  PENDING // Payment initiated but not completed
+  COMPLETED // Successfully paid
+  FAILED // Payment failed
+  REFUNDED // Payment refunded
+  SCHEDULED // Scheduled for future (for installments)
 }
 
 enum UserRoleEnum {
@@ -578,12 +805,6 @@ enum RefundStatus {
   APPROVED
   REJECTED
   PROCESSED
-}
-
-enum PromotionTier {
-  BASIC
-  PREMIUM
-  FEATURED
 }
 
 enum UserStatus {
@@ -632,6 +853,31 @@ enum RewardTransactionType {
   ADMIN_ADJUSTMENT // Manual adjustment by admin
   POINTS_EXPIRED // Points expired (future feature)
   WITHDRAWAL // Customer withdraws to bank (future feature)
+}
+
+enum TransactionType {
+  ORDER_PAYMENT // Payment for an order
+  WALLET_TOPUP // Adding money to wallet
+  MARKETING_SUBSCRIPTION // Payment for marketing plan
+  REFUND // Refund transaction
+}
+
+enum FooloosiPaymentStatus {
+  PENDING // Payment initiated
+  PROCESSING // Payment being processed by Foloosi
+  SUCCESS // Payment successful
+  FAILED // Payment failed
+  CANCELLED // Payment cancelled by user
+  REFUNDED // Payment refunded
+  PARTIAL_REFUND // Partially refunded
+}
+
+enum RefundPaymentStatus {
+  PENDING // Refund requested
+  PROCESSING // Refund being processed
+  COMPLETED // Refund completed
+  FAILED // Refund failed
+  REJECTED // Refund rejected
 }
 
 enum TransactionStatus {
